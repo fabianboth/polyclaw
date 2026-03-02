@@ -35,6 +35,7 @@ def cmd_status(args):
         balances = manager.get_balances()
         result["balances"] = {
             "POL": f"{balances.pol:.6f}",
+            "USDC": f"{balances.usdc:.6f}",
             "USDC.e": f"{balances.usdc_e:.6f}",
         }
     except Exception as e:

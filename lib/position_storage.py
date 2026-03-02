@@ -3,7 +3,7 @@
 import json
 import threading
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -43,8 +43,17 @@ class PositionEntry:
     clob_filled: bool = False
 
     # Status
-    status: str = "open"  # open, closed, resolved
+    status: str = "open"  # open, closed, redeemed, resolved-lost
     notes: Optional[str] = None
+
+    # Exit data
+    exit_time: Optional[str] = None
+    exit_price: Optional[float] = None
+    exit_tx: Optional[str] = None
+
+    # Market metadata
+    condition_id: Optional[str] = None
+    neg_risk: Optional[bool] = None
 
 
 class PositionStorage:
@@ -101,6 +110,24 @@ class PositionStorage:
             for p in positions:
                 if p.get("position_id") == position_id:
                     p["status"] = status
+                    self.save_all(positions)
+                    return True
+            return False
+
+    def update_exit(self, position_id: str, status: str,
+                     exit_tx: Optional[str] = None,
+                     exit_price: Optional[float] = None) -> bool:
+        """Update position with exit data (thread-safe)."""
+        with _storage_lock:
+            positions = self.load_all()
+            for p in positions:
+                if p.get("position_id") == position_id:
+                    p["status"] = status
+                    p["exit_time"] = datetime.now(timezone.utc).isoformat()
+                    if exit_tx is not None:
+                        p["exit_tx"] = exit_tx
+                    if exit_price is not None:
+                        p["exit_price"] = exit_price
                     self.save_all(positions)
                     return True
             return False

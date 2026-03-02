@@ -30,6 +30,7 @@ class Market:
     closed: bool
     resolved: bool
     outcome: Optional[str]
+    neg_risk: bool = False
 
 
 @dataclass
@@ -168,6 +169,7 @@ class GammaClient:
             closed=data.get("closed", False),
             resolved=data.get("resolved", False),
             outcome=data.get("outcome"),
+            neg_risk=data.get("negRisk", False),
         )
 
     def _parse_event(self, data: dict) -> MarketGroup:

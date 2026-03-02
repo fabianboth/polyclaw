@@ -10,9 +10,13 @@ Browse prediction markets, execute trades on-chain, and discover hedging opportu
 
 ## Features
 
-### Market browsing
+### Market browsing & discovery
 - `polyclaw markets trending` — Top markets by 24h volume
 - `polyclaw markets search "query"` — Search markets by keyword
+- `polyclaw markets discover` — Discover tradeable markets ending soon
+- `polyclaw markets discover --days 7 --min-volume 50000` — Narrow time window + volume
+- `polyclaw markets discover --max-age 3 --min-liquidity 5000` — Recently created, liquid markets
+- `polyclaw markets discover --json` — Structured output for automation (with pagination)
 - `polyclaw market <id>` — Market details with prices
 
 ### Trading
@@ -30,8 +34,9 @@ Browse prediction markets, execute trades on-chain, and discover hedging opportu
 - `polyclaw wallet approve` — Set Polymarket contract approvals (one-time)
 
 ### Token merge recovery
-- `polyclaw merge <condition_id>` — Merge YES+NO tokens back to USDC.e
-- `polyclaw merge <condition_id> 50` — Merge specific amount
+- `polyclaw merge <market_id>` — Merge YES+NO tokens back to USDC.e
+- `polyclaw merge <market_id> 50` — Merge specific amount
+- Looks up CLOB token IDs automatically from Gamma API
 - Supports both standard and neg-risk markets
 
 ### Auto-redeem resolved positions
@@ -192,7 +197,7 @@ Sells your tokens on the CLOB order book at current market price.
 ### 8. Recover stuck tokens
 If a CLOB sell failed and you have both YES and NO tokens:
 ```
-Merge my tokens for condition 0xabc123...
+Merge my tokens for market 958442
 ```
 Merges YES+NO pairs back into USDC.e.
 
@@ -222,14 +227,12 @@ Shows win rate, P&L, and profit factor from on-chain data.
 
 ### Full flow example
 
-1. **"What's trending on Polymarket?"** → Get market IDs
-2. **"Run hedge scan limit 10"** → Wait for LLM analysis
-3. Review hedge opportunities with coverage tiers
-4. **"Buy $25 YES on market abc123"** → Take position on target market
-5. **"Buy $25 NO on market xyz789"** → Take position on covering market
-6. **"Show my PolyClaw positions"** → Verify entries and track P&L
-7. **"What's my portfolio status?"** → Check allocation and value
-8. **"Redeem my resolved positions"** → Collect winnings from resolved markets
+1. **"Discover markets ending this week"** → `polyclaw markets discover --days 7`
+2. **"What's trending on Polymarket?"** → Get market IDs
+3. **"Buy $5 YES on market 958442"** → Take position
+4. **"Show my PolyClaw positions"** → Verify entries and track P&L
+5. **"What's my portfolio status?"** → Check allocation and value
+6. **"Redeem my resolved positions"** → Collect winnings from resolved markets
 
 ## Environment variables
 

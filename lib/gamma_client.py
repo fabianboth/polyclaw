@@ -32,6 +32,8 @@ class Market:
     resolved: bool
     outcome: Optional[str]
     neg_risk: bool = False
+    spread: float = 0.0
+    created_at: str = ""
 
 
 @dataclass
@@ -108,7 +110,10 @@ class GammaClient:
         max_price: float = 0.90,
         limit: int = 100,
         tag: str | None = None,
-    ) -> list[Market]:
+        page: int = 1,
+        max_age_days: int | None = None,
+        min_liquidity: float = 0,
+    ) -> tuple[list[Market], bool]:
         """Discover tradeable markets ending within a time window.
 
         Filters for markets with:
@@ -116,8 +121,10 @@ class GammaClient:
         - Minimum 24h volume
         - YES price in tradeable range (not already resolved)
         - Optionally filtered by tag (e.g. 'politics', 'crypto', 'sports')
+        - Optionally filtered by max age (days since creation)
+        - Optionally filtered by minimum liquidity
 
-        Returns markets sorted by 24h volume descending.
+        Returns (markets, has_more) tuple sorted by 24h volume descending.
         """
         from datetime import datetime, timedelta, timezone
 
@@ -125,11 +132,15 @@ class GammaClient:
         end_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         end_max = (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        fetch_batch = min(limit * 3, 500)
+        api_offset = (page - 1) * fetch_batch
+
         params = {
             "closed": "false",
             "end_date_min": end_min,
             "end_date_max": end_max,
-            "limit": min(limit * 3, 500),  # fetch extra for client-side filtering
+            "limit": fetch_batch,
+            "offset": api_offset,
             "order": "volume24hr",
             "ascending": "false",
         }
@@ -140,18 +151,32 @@ class GammaClient:
             resp = await http.get(f"{GAMMA_API_BASE}/markets", params=params)
             resp.raise_for_status()
 
+            api_results = resp.json()
+            has_more = len(api_results) == fetch_batch
+
             matches = []
-            for m in resp.json():
+            for m in api_results:
                 market = self._parse_market(m)
                 if market.volume_24h < min_volume_24h:
                     continue
                 if not (min_price <= market.yes_price <= max_price):
                     continue
+                if min_liquidity > 0 and market.liquidity < min_liquidity:
+                    continue
+                if max_age_days is not None:
+                    if not market.created_at:
+                        continue
+                    try:
+                        created = datetime.fromisoformat(market.created_at.replace("Z", "+00:00"))
+                        if created < now - timedelta(days=max_age_days):
+                            continue
+                    except ValueError:
+                        continue
                 matches.append(market)
                 if len(matches) >= limit:
                     break
 
-            return matches
+            return matches, has_more
 
     async def get_market(self, market_id: str) -> Market:
         """Get market by ID."""
@@ -284,6 +309,8 @@ class GammaClient:
             resolved=data.get("resolved", False),
             outcome=data.get("outcome"),
             neg_risk=data.get("negRisk", False),
+            spread=float(data.get("spread", 0) or 0),
+            created_at=data.get("createdAt", ""),
         )
 
     def _parse_event(self, data: dict) -> MarketGroup:

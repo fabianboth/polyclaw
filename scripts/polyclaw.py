@@ -102,6 +102,7 @@ def main():
         print("Commands:")
         print("  markets trending           Show trending markets by volume")
         print("  markets search <query>     Search markets by keyword")
+        print("  markets discover           Discover tradeable markets ending soon")
         print("  markets events             Show events with multiple markets")
         print("  market <id>                Show market details")
         print("")

@@ -1,5 +1,6 @@
 """Polymarket Gamma API client for market browsing."""
 
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Optional
@@ -119,6 +120,40 @@ class GammaClient:
                 raise ValueError(f"Market not found: {slug}")
             return self._parse_market(markets[0])
 
+    async def get_market_by_token(self, token_id: str) -> Market:
+        """Get market by CLOB token ID."""
+        async with httpx.AsyncClient(timeout=self.timeout) as http:
+            resp = await http.get(
+                f"{GAMMA_API_BASE}/markets",
+                params={"clob_token_ids": token_id},
+            )
+            resp.raise_for_status()
+            markets = resp.json()
+            if not markets:
+                raise ValueError(f"No market found for token_id: {token_id}")
+            return self._parse_market(markets[0])
+
+    async def get_market_by_condition(self, condition_id: str) -> Market:
+        """Get market by condition ID.
+
+        Note: The Gamma API's conditionId filter is unreliable — it may
+        ignore the parameter and return unrelated markets. This method
+        validates the result and raises ValueError on mismatch. Prefer
+        pre-populating MarketCache via token_id lookups instead.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as http:
+            resp = await http.get(
+                f"{GAMMA_API_BASE}/markets",
+                params={"conditionId": condition_id},
+            )
+            resp.raise_for_status()
+            markets = resp.json()
+            # Validate: find a result whose conditionId actually matches
+            for m in markets:
+                if m.get("conditionId") == condition_id:
+                    return self._parse_market(m)
+            raise ValueError(f"No market found for conditionId: {condition_id}")
+
     async def get_events(self, limit: int = 20) -> list[MarketGroup]:
         """Get events/groups with their markets."""
         async with httpx.AsyncClient(timeout=self.timeout) as http:
@@ -135,17 +170,43 @@ class GammaClient:
             return [self._parse_event(e) for e in resp.json()]
 
     async def get_prices(self, token_ids: list[str]) -> dict[str, float]:
-        """Get current prices for token IDs."""
+        """Get current midpoint prices for token IDs from the CLOB API.
+
+        Returns a dict of token_id -> price. Resolved markets (no orderbook)
+        are silently skipped.
+        """
         if not token_ids:
             return {}
 
+        prices: dict[str, float] = {}
+
+        async def _fetch_one(http: httpx.AsyncClient, token_id: str) -> None:
+            try:
+                resp = await http.get(
+                    "https://clob.polymarket.com/midpoint",
+                    params={"token_id": token_id},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    mid = data.get("mid")
+                    if mid in (None, ""):
+                        return
+                    prices[token_id] = float(mid)
+                # 404 = resolved market, no orderbook — skip silently
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                pass
+
         async with httpx.AsyncClient(timeout=self.timeout) as http:
-            resp = await http.get(
-                "https://clob.polymarket.com/prices",
-                params={"token_ids": ",".join(token_ids)},
-            )
-            resp.raise_for_status()
-            return resp.json()
+            unique_ids = list(dict.fromkeys(token_ids))
+            sem = asyncio.Semaphore(20)
+
+            async def _bounded_fetch(tid: str) -> None:
+                async with sem:
+                    await _fetch_one(http, tid)
+
+            await asyncio.gather(*[_bounded_fetch(tid) for tid in unique_ids])
+
+        return prices
 
     def _parse_market(self, data: dict) -> Market:
         """Parse market JSON into Market dataclass."""

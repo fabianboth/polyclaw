@@ -157,7 +157,7 @@ async def cmd_discover(args):
         if args.max_age is not None:
             parts.append(f"max-age {args.max_age}d")
         if args.json:
-            envelope = {"page": args.page, "has_more": False, "markets": []}
+            envelope = {"page": args.page, "has_more": has_more, "markets": []}
             print(json.dumps(envelope, indent=2))
         else:
             print(f"0 markets survived filtering ({', '.join(parts)})")

@@ -168,9 +168,11 @@ class GammaClient:
                         continue
                     try:
                         created = datetime.fromisoformat(market.created_at.replace("Z", "+00:00"))
+                        if created.tzinfo is None:
+                            created = created.replace(tzinfo=timezone.utc)
                         if created < now - timedelta(days=max_age_days):
                             continue
-                    except ValueError:
+                    except (ValueError, TypeError):
                         continue
                 matches.append(market)
                 if len(matches) >= limit:

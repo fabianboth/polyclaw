@@ -51,7 +51,7 @@ class WalletManager:
         """Get Web3 instance."""
         if not self.rpc_url:
             raise ValueError("POLYGON_RPC_URL (or CHAINSTACK_NODE) environment variable not set")
-        return Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 60, "proxies": {}}))
+        return Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 60, "proxies": {"http": None, "https": None}}))
 
     def get_unlocked_key(self) -> str:
         """Get the private key for signing."""

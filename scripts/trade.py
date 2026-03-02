@@ -54,7 +54,7 @@ class TradeExecutor:
         return Web3(
             Web3.HTTPProvider(
                 self.wallet.rpc_url,
-                request_kwargs={"timeout": 60, "proxies": {}}  # Bypass HTTPS_PROXY
+                request_kwargs={"timeout": 60, "proxies": {"http": None, "https": None}}  # Bypass HTTPS_PROXY
             )
         )
 

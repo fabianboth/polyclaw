@@ -109,8 +109,17 @@ async def cmd_trades(args):
     if args.limit is not None:
         events = events[:args.limit]
 
+    # Pre-populate cache from position token_ids (reliable Gamma lookup),
+    # then resolve events by condition_id from cache.
     gamma = GammaClient()
     cache = MarketCache()
+    try:
+        positions = await client.get_positions()
+        token_ids = list({p.token_id for p in positions})
+        await cache.populate_from_token_ids(token_ids, gamma)
+    except SubgraphError:
+        pass  # Best-effort; resolve_batch will try conditionId fallback
+
     condition_ids = list({e.condition_id for e in events})
     metadata = await cache.resolve_batch(condition_ids, gamma)
 

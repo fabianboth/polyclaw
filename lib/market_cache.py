@@ -90,6 +90,37 @@ class MarketCache:
         self.put(condition_id, entry)
         return entry
 
+    async def populate_from_token_ids(
+        self, token_ids: list[str], gamma: "GammaClient"
+    ) -> None:
+        """Pre-populate cache by resolving token_ids to markets via Gamma.
+
+        This is the preferred way to fill the cache because the Gamma API's
+        clob_token_ids filter is reliable, unlike the conditionId filter.
+        """
+        seen: set[str] = set()
+        for token_id in token_ids:
+            if token_id in seen:
+                continue
+            seen.add(token_id)
+            try:
+                market = await gamma.get_market_by_token(token_id)
+            except Exception:
+                continue
+            if market.condition_id and self.get(market.condition_id) is None:
+                self.put(
+                    market.condition_id,
+                    MarketCacheEntry(
+                        condition_id=market.condition_id,
+                        market_id=market.id,
+                        question=market.question,
+                        slug=market.slug,
+                        yes_token_id=market.yes_token_id,
+                        no_token_id=market.no_token_id or "",
+                        cached_at=datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+
     async def resolve_batch(
         self, condition_ids: list[str], gamma: "GammaClient"
     ) -> dict[str, MarketCacheEntry]:

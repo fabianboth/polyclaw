@@ -60,14 +60,18 @@ class SubgraphClient:
     def __init__(self, wallet_address: str, timeout: float = 30.0):
         self.wallet_address = wallet_address.lower()
         self.timeout = timeout
+        self._page_delay = 0.5  # seconds between paginated requests
 
-    async def _query(self, url: str, query: str, variables: dict) -> dict:
+    async def _query(
+        self, url: str, query: str, variables: dict, retries: int = 2
+    ) -> dict:
         """Execute a GraphQL query against a subgraph endpoint.
 
         Args:
             url: Subgraph endpoint URL.
             query: GraphQL query string.
             variables: Query variables dict.
+            retries: Number of retries on transient failures (timeouts).
 
         Returns:
             The "data" dict from the response.
@@ -75,27 +79,44 @@ class SubgraphClient:
         Raises:
             SubgraphError: On network failure, non-200 status, or GraphQL errors.
         """
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as http:
-                resp = await http.post(
-                    url,
-                    json={"query": query, "variables": variables},
+        last_error: Exception | None = None
+
+        for attempt in range(1 + retries):
+            if attempt > 0:
+                await asyncio.sleep(1 * attempt)
+
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as http:
+                    resp = await http.post(
+                        url,
+                        json={"query": query, "variables": variables},
+                    )
+            except httpx.HTTPError as exc:
+                last_error = SubgraphError(f"Subgraph request failed: {exc}")
+                continue
+
+            if resp.status_code != 200:
+                raise SubgraphError(
+                    f"Subgraph returned status {resp.status_code}: {resp.text}"
                 )
-        except httpx.HTTPError as exc:
-            raise SubgraphError(f"Subgraph request failed: {exc}") from exc
 
-        if resp.status_code != 200:
-            raise SubgraphError(
-                f"Subgraph returned status {resp.status_code}: {resp.text}"
-            )
+            body = resp.json()
+            if "errors" in body:
+                errors = body["errors"]
+                msg = (
+                    errors[0].get("message", str(errors))
+                    if errors
+                    else str(errors)
+                )
+                # Retry on timeout errors
+                if "timeout" in msg.lower() and attempt < retries:
+                    last_error = SubgraphError(f"Subgraph query error: {msg}")
+                    continue
+                raise SubgraphError(f"Subgraph query error: {msg}")
 
-        body = resp.json()
-        if "errors" in body:
-            errors = body["errors"]
-            msg = errors[0].get("message", str(errors)) if errors else str(errors)
-            raise SubgraphError(f"Subgraph query error: {msg}")
+            return body["data"]
 
-        return body["data"]
+        raise last_error or SubgraphError("Subgraph query failed after retries")
 
     # ------------------------------------------------------------------
     # Activity subgraph methods
@@ -114,7 +135,7 @@ class SubgraphClient:
                 id
                 timestamp
                 stakeholder
-                condition { id }
+                condition
                 amount
             }
         }
@@ -136,7 +157,7 @@ class SubgraphClient:
                         event_type="split",
                         timestamp=_unix_to_iso(s["timestamp"]),
                         wallet=s["stakeholder"].lower(),
-                        condition_id=s["condition"]["id"],
+                        condition_id=s["condition"],
                         amount_usdc=int(s["amount"]) / 1e6,
                         tx_hash=s["id"].split("_")[0],
                     )
@@ -144,6 +165,7 @@ class SubgraphClient:
             if len(splits) < limit:
                 break
             cursor = splits[-1]["id"]
+            await asyncio.sleep(self._page_delay)
 
         return events
 
@@ -160,7 +182,7 @@ class SubgraphClient:
                 id
                 timestamp
                 stakeholder
-                condition { id }
+                condition
                 amount
             }
         }
@@ -182,7 +204,7 @@ class SubgraphClient:
                         event_type="merge",
                         timestamp=_unix_to_iso(m["timestamp"]),
                         wallet=m["stakeholder"].lower(),
-                        condition_id=m["condition"]["id"],
+                        condition_id=m["condition"],
                         amount_usdc=int(m["amount"]) / 1e6,
                         tx_hash=m["id"].split("_")[0],
                     )
@@ -190,6 +212,7 @@ class SubgraphClient:
             if len(merges) < limit:
                 break
             cursor = merges[-1]["id"]
+            await asyncio.sleep(self._page_delay)
 
         return events
 
@@ -206,7 +229,7 @@ class SubgraphClient:
                 id
                 timestamp
                 redeemer
-                condition { id }
+                condition
                 payout
                 indexSets
             }
@@ -231,7 +254,7 @@ class SubgraphClient:
                         event_type="redemption",
                         timestamp=_unix_to_iso(r["timestamp"]),
                         wallet=r["redeemer"].lower(),
-                        condition_id=r["condition"]["id"],
+                        condition_id=r["condition"],
                         amount_usdc=int(r["payout"]) / 1e6,
                         tx_hash=r["id"].split("_")[0],
                         index_sets=index_sets,
@@ -240,6 +263,7 @@ class SubgraphClient:
             if len(redemptions) < limit:
                 break
             cursor = redemptions[-1]["id"]
+            await asyncio.sleep(self._page_delay)
 
         return events
 
@@ -312,54 +336,18 @@ class SubgraphClient:
             if len(items) < limit:
                 break
             cursor = items[-1]["id"]
+            await asyncio.sleep(self._page_delay)
 
         return positions
 
     async def get_open_positions(self, limit: int = 1000) -> list[UserPosition]:
-        """Fetch only open positions (amount > 0) from the PnL subgraph."""
-        query = """
-        query GetOpenPositions($wallet: String!, $limit: Int!, $cursor: String!) {
-            userPositions(
-                where: { user: $wallet, amount_gt: "0", id_gt: $cursor }
-                first: $limit
-                orderBy: id
-                orderDirection: asc
-            ) {
-                id
-                tokenId
-                amount
-                avgPrice
-                realizedPnl
-                totalBought
-            }
-        }
+        """Fetch only open positions (amount > 0) from the PnL subgraph.
+
+        Uses client-side filtering because the subgraph's amount_gt filter
+        causes query timeouts on Goldsky's infrastructure.
         """
-        positions: list[UserPosition] = []
-        cursor = ""
-
-        while True:
-            data = await self._query(
-                PNL_SUBGRAPH_URL,
-                query,
-                {"wallet": self.wallet_address, "limit": limit, "cursor": cursor},
-            )
-            items = data.get("userPositions", [])
-            for p in items:
-                positions.append(
-                    UserPosition(
-                        id=p["id"],
-                        token_id=p["tokenId"],
-                        amount=int(p["amount"]) / 1e6,
-                        avg_price=int(p["avgPrice"]) / 1e6,
-                        realized_pnl=int(p["realizedPnl"]) / 1e6,
-                        total_bought=int(p["totalBought"]) / 1e6,
-                    )
-                )
-            if len(items) < limit:
-                break
-            cursor = items[-1]["id"]
-
-        return positions
+        all_positions = await self.get_positions(limit=limit)
+        return [p for p in all_positions if p.amount > 0]
 
 
 def _unix_to_iso(unix_ts: str) -> str:

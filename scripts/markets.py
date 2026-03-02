@@ -159,9 +159,10 @@ async def cmd_discover(args):
         if args.json:
             envelope = {"page": args.page, "has_more": has_more, "markets": []}
             print(json.dumps(envelope, indent=2))
+            return 0
         else:
             print(f"0 markets survived filtering ({', '.join(parts)})")
-        return 1
+            return 1
 
     if args.json:
         result = []

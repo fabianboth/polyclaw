@@ -26,8 +26,34 @@ Browse prediction markets, execute trades on-chain, and discover hedging opportu
 - Positions tracked locally in `~/.openclaw/polyclaw/positions.json`
 
 ### Wallet management
-- `polyclaw wallet status` — Show address, POL/USDC.e balances
+- `polyclaw wallet status` — Show address, POL/USDC/USDC.e balances
 - `polyclaw wallet approve` — Set Polymarket contract approvals (one-time)
+
+### Token merge recovery
+- `polyclaw merge <condition_id>` — Merge YES+NO tokens back to USDC.e
+- `polyclaw merge <condition_id> 50` — Merge specific amount
+- Supports both standard and neg-risk markets
+
+### Auto-redeem resolved positions
+- `polyclaw redeem` — Redeem all winning positions on resolved markets
+- `polyclaw redeem --dry-run` — Preview without executing
+
+### USDC swapping
+- `polyclaw swap balances` — Show USDC and USDC.e balances
+- `polyclaw swap to-bridged` — Swap USDC to USDC.e via QuickSwap V2
+- `polyclaw swap to-native` — Swap USDC.e to USDC
+- Supports `--amount N` and `--dry-run` flags
+
+### Portfolio management
+- `polyclaw portfolio status` — Portfolio overview with allocation check
+- `polyclaw portfolio rules` — Show portfolio rules (informational)
+- `polyclaw portfolio history` — Trade journal entries
+- `polyclaw portfolio snapshot` — Save portfolio snapshot for trend tracking
+
+### Performance analytics
+- `polyclaw performance summary` — Win rate, P&L, profit factor
+- `polyclaw performance trades` — Per-trade breakdown
+- `polyclaw performance chart` — ASCII portfolio value chart
 
 ### Hedge discovery
 - `polyclaw hedge scan` — Scan trending markets for hedging opportunities
@@ -66,7 +92,7 @@ Add the following to your `openclaw.json` under `skills.entries.polyclaw.env`:
 "polyclaw": {
   "enabled": true,
   "env": {
-    "CHAINSTACK_NODE": "https://polygon-mainnet.core.chainstack.com/YOUR_KEY",
+    "POLYGON_RPC_URL": "https://polygon-mainnet.infura.io/v3/YOUR_KEY",
     "POLYCLAW_PRIVATE_KEY": "0x...",
     "OPENROUTER_API_KEY": "sk-or-v1-..."
   }
@@ -74,7 +100,7 @@ Add the following to your `openclaw.json` under `skills.entries.polyclaw.env`:
 ```
 
 **Where to get the keys:**
-- **Chainstack node** — [Sign up at Chainstack](https://console.chainstack.com) (free tier available, sign up with GitHub, X, or Google)
+- **Polygon RPC** — Any Polygon RPC provider (Infura, Alchemy, [Chainstack](https://console.chainstack.com), public polygon-rpc.com, etc.)
 - **OpenRouter API key** — [Create key at OpenRouter](https://openrouter.ai/settings/keys)
 
 **Security warning:** Keep only small amounts in this wallet. Withdraw regularly to a secure wallet.
@@ -163,6 +189,37 @@ Sell my YES position on market <market_id>
 ```
 Sells your tokens on the CLOB order book at current market price.
 
+### 8. Recover stuck tokens
+If a CLOB sell failed and you have both YES and NO tokens:
+```
+Merge my tokens for condition 0xabc123...
+```
+Merges YES+NO pairs back into USDC.e.
+
+### 9. Redeem resolved markets
+```
+Redeem my resolved positions (dry run first)
+```
+Scans open positions for resolved markets and redeems winners.
+
+### 10. Swap USDC
+```
+Swap my USDC to USDC.e for trading
+```
+Converts native USDC to bridged USDC.e via QuickSwap V2.
+
+### 11. Portfolio overview
+```
+What's my portfolio status?
+```
+Shows total value, cash allocation, position exposure, and rule compliance.
+
+### 12. Performance review
+```
+How are my trades performing?
+```
+Shows win rate, P&L, and profit factor from the trade journal.
+
 ### Full flow example
 
 1. **"What's trending on Polymarket?"** → Get market IDs
@@ -171,12 +228,15 @@ Sells your tokens on the CLOB order book at current market price.
 4. **"Buy $25 YES on market abc123"** → Take position on target market
 5. **"Buy $25 NO on market xyz789"** → Take position on covering market
 6. **"Show my PolyClaw positions"** → Verify entries and track P&L
+7. **"What's my portfolio status?"** → Check allocation and value
+8. **"Redeem my resolved positions"** → Collect winnings from resolved markets
 
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CHAINSTACK_NODE` | Yes (trading) | Polygon RPC URL |
+| `POLYGON_RPC_URL` | Yes (trading) | Polygon RPC URL (any provider) |
+| `CHAINSTACK_NODE` | No | Legacy fallback if POLYGON_RPC_URL not set |
 | `OPENROUTER_API_KEY` | Yes (hedge) | OpenRouter API key for LLM |
 | `POLYCLAW_PRIVATE_KEY` | Yes (trading) | EVM private key (hex) |
 | `HTTPS_PROXY` | No | Only needed if CLOB orders fail (see [troubleshooting](#clob-order-failed--ip-blocked-by-cloudflare)) |
@@ -196,6 +256,11 @@ polyclaw/
 │   ├── wallet.py                # Wallet management
 │   ├── trade.py                 # Split + CLOB execution
 │   ├── positions.py             # Position tracking + P&L
+│   ├── merge_tokens.py          # Token merge/recovery
+│   ├── redeem.py                # Auto-redeem resolved positions
+│   ├── swap_usdc.py             # USDC <-> USDC.e swapping
+│   ├── portfolio.py             # Portfolio status, rules, history, snapshot
+│   ├── performance.py           # Performance analytics
 │   └── hedge.py                 # LLM hedge discovery
 │
 └── lib/
@@ -204,7 +269,9 @@ polyclaw/
     ├── contracts.py             # CTF ABI + addresses
     ├── coverage.py              # Coverage calculation + tiers
     ├── gamma_client.py          # Polymarket Gamma API client
+    ├── journal_storage.py       # Trade journal (JSONL)
     ├── llm_client.py            # OpenRouter LLM client
+    ├── portfolio_storage.py     # Portfolio snapshots + rules
     ├── position_storage.py      # Position JSON storage
     └── wallet_manager.py        # Wallet lifecycle
 ```
@@ -279,11 +346,13 @@ order = client.get_order("0xc93d6214...")
 
 | Contract | Address |
 |----------|---------|
-| USDC.e | `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174` |
+| USDC (native) | `0x3c499c542cEf5E3811e1192ce70d8cC03d5c3359` |
+| USDC.e (bridged) | `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174` |
 | CTF | `0x4D97DCd97eC945f40cF65F87097ACe5EA0476045` |
 | CTF Exchange | `0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E` |
 | Neg Risk CTF Exchange | `0xC5d563A36AE78145C45a50134d48A1215220f80a` |
 | Neg Risk Adapter | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` |
+| QuickSwap V2 Router | `0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff` |
 
 ## Troubleshooting
 
@@ -293,10 +362,10 @@ Set the `POLYCLAW_PRIVATE_KEY` environment variable:
 export POLYCLAW_PRIVATE_KEY="0x..."
 ```
 
-### "CHAINSTACK_NODE not set"
-Set the Polygon RPC URL:
+### "POLYGON_RPC_URL not set"
+Set the Polygon RPC URL (any provider):
 ```bash
-export CHAINSTACK_NODE="https://polygon-mainnet.core.chainstack.com/YOUR_KEY"
+export POLYGON_RPC_URL="https://polygon-mainnet.infura.io/v3/YOUR_KEY"
 ```
 
 ### "OPENROUTER_API_KEY not set"

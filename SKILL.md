@@ -1,7 +1,7 @@
 ---
 name: polyclaw
 description: "Trade on Polymarket via split + CLOB execution. Browse markets, track positions with P&L, discover hedges via LLM. Polygon/Web3."
-metadata: {"openclaw":{"emoji":"🦞","homepage":"https://polymarket.com","primaryEnv":"POLYCLAW_PRIVATE_KEY","requires":{"bins":["uv"],"env":["CHAINSTACK_NODE","POLYCLAW_PRIVATE_KEY"]},"install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]},"clawdbot":{"emoji":"🦞","homepage":"https://polymarket.com","primaryEnv":"POLYCLAW_PRIVATE_KEY","requires":{"bins":["uv"],"env":["CHAINSTACK_NODE","POLYCLAW_PRIVATE_KEY"]},"install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]}}
+metadata: {"openclaw":{"emoji":"🦞","homepage":"https://polymarket.com","primaryEnv":"POLYCLAW_PRIVATE_KEY","requires":{"bins":["uv"],"env":["POLYGON_RPC_URL","POLYCLAW_PRIVATE_KEY"]},"install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]},"clawdbot":{"emoji":"🦞","homepage":"https://polymarket.com","primaryEnv":"POLYCLAW_PRIVATE_KEY","requires":{"bins":["uv"],"env":["POLYGON_RPC_URL","POLYCLAW_PRIVATE_KEY"]},"install":[{"id":"uv-brew","kind":"brew","formula":"uv","bins":["uv"],"label":"Install uv (brew)"}]}}
 ---
 
 # PolyClaw
@@ -11,9 +11,14 @@ Trading-enabled Polymarket skill for OpenClaw. Browse markets, manage wallets, e
 ## Features
 
 - **Market Browsing** - Search and browse Polymarket prediction markets
-- **Wallet Management** - Env-var based wallet configuration
+- **Wallet Management** - Env-var based wallet configuration with POL, USDC, and USDC.e balances
 - **Trading** - Buy YES/NO positions via split + CLOB execution
 - **Position Tracking** - Track entry prices, current prices, and P&L
+- **Token Merge** - Recover locked capital by merging YES+NO tokens back to USDC.e
+- **Auto-Redeem** - Automatically redeem winning positions on resolved markets
+- **USDC Swapping** - Convert between native USDC and bridged USDC.e via QuickSwap V2
+- **Portfolio Management** - Track portfolio value, allocation rules, trade journal, snapshots
+- **Performance Analytics** - Win rate, P&L, profit factor, portfolio value charts
 - **Hedge Discovery** - LLM-powered covering portfolio discovery via logical implications
 
 ## Quick Start
@@ -56,7 +61,7 @@ uv run python scripts/polyclaw.py market <market_id>
 ### Wallet Management
 
 ```bash
-# Check wallet status (address, balances)
+# Check wallet status (address, balances — POL, USDC, USDC.e)
 uv run python scripts/polyclaw.py wallet status
 
 # Set contract approvals (one-time)
@@ -80,6 +85,81 @@ uv run python scripts/polyclaw.py buy <market_id> NO 25
 ```bash
 # List all positions with P&L
 uv run python scripts/polyclaw.py positions
+```
+
+### Token merge
+
+Recover locked capital by merging YES + NO token pairs back into USDC.e:
+
+```bash
+# Merge all overlapping tokens for a condition
+uv run python scripts/polyclaw.py merge <condition_id>
+
+# Merge specific amount
+uv run python scripts/polyclaw.py merge <condition_id> 50
+```
+
+### Auto-redeem
+
+Scan open positions, find resolved markets, and redeem winning tokens:
+
+```bash
+# Preview what would be redeemed
+uv run python scripts/polyclaw.py redeem --dry-run
+
+# Execute redemptions
+uv run python scripts/polyclaw.py redeem
+```
+
+### USDC swapping
+
+Convert between native USDC and bridged USDC.e via QuickSwap V2:
+
+```bash
+# Show USDC and USDC.e balances
+uv run python scripts/polyclaw.py swap balances
+
+# Swap USDC to USDC.e (for trading)
+uv run python scripts/polyclaw.py swap to-bridged --amount 10
+
+# Swap USDC.e to USDC
+uv run python scripts/polyclaw.py swap to-native
+
+# Preview swap without executing
+uv run python scripts/polyclaw.py swap to-bridged --dry-run
+```
+
+### Portfolio management
+
+Track portfolio health, trade journal, and allocation rules:
+
+```bash
+# Portfolio overview with allocation check
+uv run python scripts/polyclaw.py portfolio status
+
+# Show portfolio rules (informational)
+uv run python scripts/polyclaw.py portfolio rules
+
+# Trade journal history
+uv run python scripts/polyclaw.py portfolio history --limit 10
+
+# Save portfolio snapshot for trend tracking
+uv run python scripts/polyclaw.py portfolio snapshot
+```
+
+### Performance analytics
+
+Review aggregate trading metrics:
+
+```bash
+# Win rate, P&L, profit factor
+uv run python scripts/polyclaw.py performance summary
+
+# Per-trade breakdown
+uv run python scripts/polyclaw.py performance trades
+
+# ASCII chart of portfolio value over time
+uv run python scripts/polyclaw.py performance chart
 ```
 
 ### Hedge Discovery
@@ -121,10 +201,11 @@ For the MVP, the private key is stored in an environment variable for simplicity
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CHAINSTACK_NODE` | Yes (trading) | Polygon RPC URL |
+| `POLYGON_RPC_URL` | Yes (trading) | Polygon RPC URL (primary) |
+| `CHAINSTACK_NODE` | No | Polygon RPC URL (legacy fallback if POLYGON_RPC_URL not set) |
 | `OPENROUTER_API_KEY` | Yes (hedge) | OpenRouter API key for LLM hedge discovery |
 | `POLYCLAW_PRIVATE_KEY` | Yes (trading) | EVM private key (hex, with or without 0x prefix) |
-| `HTTPS_PROXY` | Recommended | Rotating residential proxy for CLOB (e.g., IPRoyal) |
+| `HTTPS_PROXY` | No | Only needed if CLOB orders fail |
 | `CLOB_MAX_RETRIES` | No | Max CLOB retries with IP rotation (default: 5) |
 
 **Security Warning:** Keep only small amounts in this wallet. Withdraw regularly to a secure wallet. The private key in an env var is convenient for automation but less secure than encrypted storage.

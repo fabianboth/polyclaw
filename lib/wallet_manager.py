@@ -15,13 +15,14 @@ class WalletBalances:
     """Wallet balances."""
     pol: float
     usdc_e: float
+    usdc: float = 0.0
 
 
 class WalletManager:
     """Manages wallet from POLYCLAW_PRIVATE_KEY env var."""
 
     def __init__(self, rpc_url: Optional[str] = None):
-        self.rpc_url = rpc_url or os.environ.get("CHAINSTACK_NODE", "")
+        self.rpc_url = rpc_url or os.environ.get("POLYGON_RPC_URL") or os.environ.get("CHAINSTACK_NODE", "")
         self._private_key: Optional[str] = None
         self._address: Optional[str] = None
         self._load_from_env()
@@ -49,7 +50,7 @@ class WalletManager:
     def _get_web3(self) -> Web3:
         """Get Web3 instance."""
         if not self.rpc_url:
-            raise ValueError("CHAINSTACK_NODE environment variable not set")
+            raise ValueError("POLYGON_RPC_URL (or CHAINSTACK_NODE) environment variable not set")
         return Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 60, "proxies": {}}))
 
     def get_unlocked_key(self) -> str:
@@ -72,13 +73,19 @@ class WalletManager:
 
         pol = float(w3.from_wei(w3.eth.get_balance(checksum), "ether"))
 
-        usdc = w3.eth.contract(
+        usdc_e_contract = w3.eth.contract(
             address=Web3.to_checksum_address(CONTRACTS["USDC_E"]),
             abi=ERC20_ABI,
         )
-        usdc_balance = usdc.functions.balanceOf(checksum).call() / 1e6
+        usdc_e_balance = usdc_e_contract.functions.balanceOf(checksum).call() / 1e6
 
-        return WalletBalances(pol=pol, usdc_e=usdc_balance)
+        usdc_contract = w3.eth.contract(
+            address=Web3.to_checksum_address(CONTRACTS["USDC"]),
+            abi=ERC20_ABI,
+        )
+        usdc_balance = usdc_contract.functions.balanceOf(checksum).call() / 1e6
+
+        return WalletBalances(pol=pol, usdc_e=usdc_e_balance, usdc=usdc_balance)
 
     def check_approvals(self) -> bool:
         """Check if all Polymarket approvals are set."""

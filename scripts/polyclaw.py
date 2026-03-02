@@ -9,8 +9,12 @@ Usage:
     polyclaw wallet approve
     polyclaw buy <market_id> YES 50
     polyclaw positions
+    polyclaw merge <condition_id>
+    polyclaw redeem [--dry-run]
+    polyclaw swap to-bridged [--amount N] [--dry-run]
+    polyclaw portfolio status|rules|history|snapshot
+    polyclaw performance summary|trades|chart
     polyclaw hedge scan
-    polyclaw hedge scan --query "election"
     polyclaw hedge analyze <id1> <id2>
 """
 
@@ -75,6 +79,21 @@ def main():
         else:
             return run_script("positions", ["list"])
 
+    elif command == "merge":
+        return run_script("merge_tokens", args)
+
+    elif command == "redeem":
+        return run_script("redeem", args)
+
+    elif command == "swap":
+        return run_script("swap_usdc", args)
+
+    elif command == "portfolio":
+        return run_script("portfolio", args)
+
+    elif command == "performance":
+        return run_script("performance", args)
+
     elif command == "hedge":
         return run_script("hedge", args)
 
@@ -96,12 +115,27 @@ def main():
         print("  positions --all            List all positions")
         print("  position <id>              Show position details")
         print("")
+        print("  merge <condition_id>       Merge YES+NO tokens back to USDC.e")
+        print("  redeem [--dry-run]         Auto-redeem resolved positions")
+        print("  swap to-bridged|to-native  Swap USDC <-> USDC.e via QuickSwap")
+        print("  swap balances              Show USDC and USDC.e balances")
+        print("")
+        print("  portfolio status           Portfolio overview with allocation check")
+        print("  portfolio rules            Show portfolio rules")
+        print("  portfolio history          Trade journal entries")
+        print("  portfolio snapshot         Save portfolio snapshot")
+        print("")
+        print("  performance summary        Win rate, P&L, profit factor")
+        print("  performance trades         Per-trade breakdown")
+        print("  performance chart          ASCII portfolio value chart")
+        print("")
         print("  hedge scan                 Scan trending markets for hedges")
         print("  hedge scan --query <q>     Scan markets matching query")
         print("  hedge analyze <id1> <id2>  Analyze pair for hedging relationship")
         print("")
         print("Environment Variables:")
-        print("  CHAINSTACK_NODE            Polygon RPC URL (required for trading)")
+        print("  POLYGON_RPC_URL            Polygon RPC URL (primary)")
+        print("  CHAINSTACK_NODE            Polygon RPC URL (fallback)")
         print("  OPENROUTER_API_KEY         OpenRouter API key (required for hedge)")
         print("  POLYCLAW_PRIVATE_KEY       EVM private key (required for trading)")
         print("")
@@ -112,8 +146,12 @@ def main():
         print("  polyclaw wallet status")
         print("  polyclaw buy abc123 YES 50")
         print("  polyclaw positions")
+        print("  polyclaw merge 0xabc123...")
+        print("  polyclaw redeem --dry-run")
+        print("  polyclaw swap to-bridged --amount 10")
+        print("  polyclaw portfolio status")
+        print("  polyclaw performance summary")
         print("  polyclaw hedge scan")
-        print("  polyclaw hedge scan --query 'election'")
         return 0
 
     elif command == "version" or command == "--version" or command == "-v":

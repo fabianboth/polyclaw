@@ -129,7 +129,7 @@ class SubgraphClient:
     # Activity subgraph methods
     # ------------------------------------------------------------------
 
-    async def get_splits(self, limit: int = 1000) -> list[TradeEvent]:
+    async def get_splits(self, limit: int = 100) -> list[TradeEvent]:
         """Fetch split events for the wallet from the activity subgraph."""
         if limit <= 0:
             raise ValueError("limit must be > 0")
@@ -178,7 +178,7 @@ class SubgraphClient:
 
         return events
 
-    async def get_merges(self, limit: int = 1000) -> list[TradeEvent]:
+    async def get_merges(self, limit: int = 100) -> list[TradeEvent]:
         """Fetch merge events for the wallet from the activity subgraph."""
         if limit <= 0:
             raise ValueError("limit must be > 0")
@@ -227,7 +227,7 @@ class SubgraphClient:
 
         return events
 
-    async def get_redemptions(self, limit: int = 1000) -> list[TradeEvent]:
+    async def get_redemptions(self, limit: int = 100) -> list[TradeEvent]:
         """Fetch redemption events for the wallet from the activity subgraph."""
         if limit <= 0:
             raise ValueError("limit must be > 0")
@@ -280,7 +280,7 @@ class SubgraphClient:
 
         return events
 
-    async def get_all_events(self, limit: int = 1000) -> list[TradeEvent]:
+    async def get_all_events(self, limit: int = 100) -> list[TradeEvent]:
         """Fetch all activity events concurrently and return deduplicated, sorted."""
         splits, merges, redemptions = await asyncio.gather(
             self.get_splits(limit=limit),
@@ -306,7 +306,7 @@ class SubgraphClient:
     # PnL subgraph methods
     # ------------------------------------------------------------------
 
-    async def get_positions(self, limit: int = 1000) -> list[UserPosition]:
+    async def get_positions(self, limit: int = 100) -> list[UserPosition]:
         """Fetch all positions for the wallet from the PnL subgraph."""
         if limit <= 0:
             raise ValueError("limit must be > 0")
@@ -355,7 +355,7 @@ class SubgraphClient:
 
         return positions
 
-    async def get_open_positions(self, limit: int = 1000) -> list[UserPosition]:
+    async def get_open_positions(self, limit: int = 100) -> list[UserPosition]:
         """Fetch only open positions (amount > 0) from the PnL subgraph.
 
         Uses client-side filtering because the subgraph's amount_gt filter

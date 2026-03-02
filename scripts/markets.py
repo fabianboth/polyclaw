@@ -135,6 +135,41 @@ async def cmd_details(args):
     print(json.dumps(result, indent=2))
 
 
+async def cmd_discover(args):
+    """Discover tradeable markets in a time window."""
+    client = GammaClient()
+    markets = await client.discover_markets(
+        days=args.days,
+        min_volume_24h=args.min_volume,
+        min_price=args.min_price,
+        max_price=args.max_price,
+        limit=args.limit,
+        tag=args.tag,
+    )
+
+    if not markets:
+        print(f"No markets found matching criteria (next {args.days} days, >${args.min_volume:,.0f} vol, ${args.min_price:.2f}-${args.max_price:.2f} range)")
+        return 1
+
+    if args.json:
+        result = []
+        for m in markets:
+            row = format_market_row(m)
+            row["end_date"] = m.end_date[:10] if m.end_date else ""
+            row["liquidity"] = format_volume(m.liquidity)
+            result.append(row)
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"{'ID':<12} {'YES':>6} {'NO':>6} {'24h Vol':>10} {'End':>11} {'Question'}")
+        print("-" * 95)
+        for m in markets:
+            end = m.end_date[:10] if m.end_date else "?"
+            question = m.question if args.full else (m.question[:45] + "..." if len(m.question) > 45 else m.question)
+            print(f"{m.id[:12]:<12} {format_price(m.yes_price):>6} {format_price(m.no_price):>6} {format_volume(m.volume_24h):>10} {end:>11} {question}")
+
+    print(f"\n{len(markets)} markets found (next {args.days}d, >${args.min_volume:,.0f} vol, ${args.min_price:.2f}-${args.max_price:.2f})")
+
+
 async def cmd_events(args):
     """Show events/groups with markets."""
     client = GammaClient()
@@ -177,6 +212,16 @@ def main():
     search_parser.add_argument("--limit", type=int, default=20, help="Number of results")
     search_parser.add_argument("--full", action="store_true", help="Show full question text")
 
+    # Discover
+    discover_parser = subparsers.add_parser("discover", help="Discover tradeable markets ending soon")
+    discover_parser.add_argument("--days", type=int, default=14, help="Days ahead to look (default: 14)")
+    discover_parser.add_argument("--min-volume", type=float, default=10000, help="Min 24h volume (default: 10000)")
+    discover_parser.add_argument("--min-price", type=float, default=0.10, help="Min YES price (default: 0.10)")
+    discover_parser.add_argument("--max-price", type=float, default=0.90, help="Max YES price (default: 0.90)")
+    discover_parser.add_argument("--tag", type=str, default=None, help="Filter by tag (politics, crypto, sports, etc)")
+    discover_parser.add_argument("--limit", type=int, default=30, help="Number of results")
+    discover_parser.add_argument("--full", action="store_true", help="Show full question text")
+
     # Details
     details_parser = subparsers.add_parser("details", help="Market details")
     details_parser.add_argument("market_id", help="Market ID, slug, or URL")
@@ -192,6 +237,8 @@ def main():
         return asyncio.run(cmd_trending(args))
     elif args.command == "search":
         return asyncio.run(cmd_search(args))
+    elif args.command == "discover":
+        return asyncio.run(cmd_discover(args))
     elif args.command == "details":
         return asyncio.run(cmd_details(args))
     elif args.command == "events":

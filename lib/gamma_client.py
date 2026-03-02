@@ -100,6 +100,59 @@ class GammaClient:
 
             return matches
 
+    async def discover_markets(
+        self,
+        days: int = 14,
+        min_volume_24h: float = 10000,
+        min_price: float = 0.10,
+        max_price: float = 0.90,
+        limit: int = 100,
+        tag: str | None = None,
+    ) -> list[Market]:
+        """Discover tradeable markets ending within a time window.
+
+        Filters for markets with:
+        - Resolution within `days` from now
+        - Minimum 24h volume
+        - YES price in tradeable range (not already resolved)
+        - Optionally filtered by tag (e.g. 'politics', 'crypto', 'sports')
+
+        Returns markets sorted by 24h volume descending.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        end_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_max = (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        params = {
+            "closed": "false",
+            "end_date_min": end_min,
+            "end_date_max": end_max,
+            "limit": min(limit * 3, 500),  # fetch extra for client-side filtering
+            "order": "volume24hr",
+            "ascending": "false",
+        }
+        if tag:
+            params["tag"] = tag
+
+        async with httpx.AsyncClient(timeout=self.timeout) as http:
+            resp = await http.get(f"{GAMMA_API_BASE}/markets", params=params)
+            resp.raise_for_status()
+
+            matches = []
+            for m in resp.json():
+                market = self._parse_market(m)
+                if market.volume_24h < min_volume_24h:
+                    continue
+                if not (min_price <= market.yes_price <= max_price):
+                    continue
+                matches.append(market)
+                if len(matches) >= limit:
+                    break
+
+            return matches
+
     async def get_market(self, market_id: str) -> Market:
         """Get market by ID."""
         async with httpx.AsyncClient(timeout=self.timeout) as http:
